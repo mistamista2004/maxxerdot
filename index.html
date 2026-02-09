@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Shape Reveal Playground</title>
+  <style>
+    :root {
+      --ui-bg: rgba(20, 20, 24, 0.85);
+      --ui-border: rgba(255, 255, 255, 0.2);
+      --ui-text: #f3f3f3;
+      --accent: #6ae3ff;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: #111;
+      color: var(--ui-text);
+      min-height: 100vh;
+      overflow: hidden;
+    }
+
+    .controls {
+      position: fixed;
+      top: 14px;
+      left: 14px;
+      z-index: 10;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      padding: 12px;
+      border: 1px solid var(--ui-border);
+      border-radius: 14px;
+      background: var(--ui-bg);
+      backdrop-filter: blur(8px);
+      max-width: min(95vw, 860px);
+    }
+
+    .controls label,
+    .controls button,
+    .controls select,
+    .controls input {
+      font-size: 14px;
+    }
+
+    .controls input[type="file"] {
+      max-width: 300px;
+      color: #ddd;
+    }
+
+    .controls select,
+    .controls button {
+      border: 1px solid var(--ui-border);
+      border-radius: 10px;
+      background: #1b1b22;
+      color: #fff;
+      padding: 8px 10px;
+    }
+
+    .controls input[type="range"] {
+      accent-color: var(--accent);
+    }
+
+    .controls .readout {
+      min-width: 100px;
+      color: #b9e9ff;
+      font-weight: 600;
+    }
+
+    #stage {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+    }
+
+    #targetImage {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      user-select: none;
+      pointer-events: none;
+      background: #111;
+    }
+
+    #overlay {
+      position: absolute;
+      inset: 0;
+    }
+
+    .tile {
+      position: absolute;
+      background: #101014;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      cursor: crosshair;
+      transition: transform 0.15s ease, opacity 0.25s ease;
+      will-change: transform, opacity;
+      opacity: 0.96;
+    }
+
+    .tile:hover {
+      transform: scale(1.02);
+      opacity: 1;
+    }
+
+    .shape-square { border-radius: 0; }
+    .shape-circle { border-radius: 50%; }
+    .shape-diamond { clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%); }
+    .shape-triangle { clip-path: polygon(50% 0%, 100% 100%, 0% 100%); }
+    .shape-hexagon { clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%); }
+
+    .help {
+      position: fixed;
+      right: 14px;
+      bottom: 14px;
+      background: var(--ui-bg);
+      border: 1px solid var(--ui-border);
+      border-radius: 12px;
+      padding: 8px 10px;
+      font-size: 13px;
+      color: #ddd;
+      z-index: 10;
+    }
+
+    @media (max-width: 760px) {
+      .controls {
+        right: 14px;
+      }
+
+      .help {
+        left: 14px;
+        right: 14px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <form class="controls" onsubmit="return false;">
+    <label>
+      Image:
+      <input id="fileInput" type="file" accept="image/*" />
+    </label>
+
+    <label>
+      Shape:
+      <select id="shapeSelect">
+        <option value="square">Square</option>
+        <option value="circle">Circle</option>
+        <option value="diamond">Diamond</option>
+        <option value="triangle">Triangle</option>
+        <option value="hexagon">Hexagon</option>
+      </select>
+    </label>
+
+    <label>
+      Min tile:
+      <input id="minSize" type="range" min="10" max="140" value="40" />
+    </label>
+    <span id="minSizeReadout" class="readout">40 px</span>
+
+    <button id="resetBtn" type="button">Reset Overlay</button>
+  </form>
+
+  <main id="stage" aria-label="Image reveal stage">
+    <img id="targetImage" src="https://images.unsplash.com/photo-1517849845537-4d257902454a?auto=format&fit=crop&w=1600&q=80" alt="Reveal target" />
+    <div id="overlay" aria-hidden="true"></div>
+  </main>
+
+  <p class="help">Hover or tap shapes to split and reveal the full-size image.</p>
+
+  <script>
+    const overlay = document.getElementById('overlay');
+    const stage = document.getElementById('stage');
+    const targetImage = document.getElementById('targetImage');
+    const fileInput = document.getElementById('fileInput');
+    const shapeSelect = document.getElementById('shapeSelect');
+    const minSizeSlider = document.getElementById('minSize');
+    const minSizeReadout = document.getElementById('minSizeReadout');
+    const resetBtn = document.getElementById('resetBtn');
+
+    let minSize = Number(minSizeSlider.value);
+
+    const shapeClass = () => `shape-${shapeSelect.value}`;
+
+    function addTile(x, y, width, height) {
+      const tile = document.createElement('div');
+      tile.className = `tile ${shapeClass()}`;
+      tile.style.left = `${x}px`;
+      tile.style.top = `${y}px`;
+      tile.style.width = `${width}px`;
+      tile.style.height = `${height}px`;
+      tile.dataset.x = x;
+      tile.dataset.y = y;
+      tile.dataset.w = width;
+      tile.dataset.h = height;
+
+      tile.addEventListener('pointerenter', () => splitTile(tile), { passive: true });
+      tile.addEventListener('pointerdown', () => splitTile(tile), { passive: true });
+      overlay.appendChild(tile);
+    }
+
+    function splitTile(tile) {
+      if (!tile || !tile.parentNode) return;
+
+      const x = Number(tile.dataset.x);
+      const y = Number(tile.dataset.y);
+      const width = Number(tile.dataset.w);
+      const height = Number(tile.dataset.h);
+
+      if (width <= minSize || height <= minSize) {
+        tile.remove();
+        return;
+      }
+
+      const w2 = width / 2;
+      const h2 = height / 2;
+
+      addTile(x, y, w2, h2);
+      addTile(x + w2, y, w2, h2);
+      addTile(x, y + h2, w2, h2);
+      addTile(x + w2, y + h2, w2, h2);
+
+      tile.remove();
+    }
+
+    function rebuildOverlay() {
+      overlay.innerHTML = '';
+      const rect = stage.getBoundingClientRect();
+      addTile(0, 0, rect.width, rect.height);
+    }
+
+    shapeSelect.addEventListener('change', () => {
+      overlay.querySelectorAll('.tile').forEach((tile) => {
+        tile.className = `tile ${shapeClass()}`;
+      });
+    });
+
+    minSizeSlider.addEventListener('input', () => {
+      minSize = Number(minSizeSlider.value);
+      minSizeReadout.textContent = `${minSize} px`;
+    });
+
+    resetBtn.addEventListener('click', rebuildOverlay);
+
+    fileInput.addEventListener('change', (event) => {
+      const [file] = event.target.files;
+      if (!file) return;
+      const url = URL.createObjectURL(file);
+      targetImage.src = url;
+      rebuildOverlay();
+    });
+
+    window.addEventListener('resize', rebuildOverlay);
+
+    rebuildOverlay();
+  </script>
+</body>
+</html>
